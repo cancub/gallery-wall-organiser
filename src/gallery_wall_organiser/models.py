@@ -6,14 +6,18 @@ def _positive(value: float, name: str) -> None:
         raise ValueError(f"{name} must be positive, got {value}")
 
 
+def _validate_dimensions(height: float, width: float) -> None:
+    _positive(height, "height")
+    _positive(width, "width")
+
+
 @dataclass
 class _Dimensions:
     height: float
     width: float
 
     def __post_init__(self) -> None:
-        _positive(self.height, "height")
-        _positive(self.width, "width")
+        _validate_dimensions(self.height, self.width)
 
 
 @dataclass
@@ -34,5 +38,27 @@ class Obstacle:
     width: float
 
     def __post_init__(self) -> None:
-        _positive(self.height, "height")
-        _positive(self.width, "width")
+        _validate_dimensions(self.height, self.width)
+
+
+@dataclass
+class Placement:
+    photo: Photo
+    x: float
+    y: float
+
+    @property
+    def left(self) -> float:
+        return self.x
+
+    @property
+    def top(self) -> float:
+        return self.y
+
+    @property
+    def right(self) -> float:
+        return self.x + self.photo.width
+
+    @property
+    def bottom(self) -> float:
+        return self.y + self.photo.height
