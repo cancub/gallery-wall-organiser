@@ -1,6 +1,7 @@
 import pytest
 
-from gallery_wall_organiser.geometry import rectangles_overlap
+from gallery_wall_organiser.geometry import is_within_bounds, rectangles_overlap
+from gallery_wall_organiser.models import Photo, Placement, Wall
 
 
 # Each rectangle is (x, y, width, height) where (x, y) is the top-left corner.
@@ -108,3 +109,71 @@ class TestRectanglesOverlapNonOverlapping:
         r2 = (200, 0, 100, 100)
 
         assert rectangles_overlap(r1, r2) == rectangles_overlap(r2, r1)
+
+
+class TestIsWithinBounds:
+    def test_fully_inside_wall(self):
+        wall = Wall(height=2400, width=1800)
+        placement = Placement(photo=Photo(height=400, width=300), x=100, y=100)
+
+        assert is_within_bounds(placement, wall) is True
+
+    def test_exactly_on_boundary(self):
+        # Photo fills the wall exactly — all edges coincide
+        wall = Wall(height=2400, width=1800)
+        placement = Placement(photo=Photo(height=2400, width=1800), x=0, y=0)
+
+        assert is_within_bounds(placement, wall) is True
+
+    def test_touching_right_edge_exactly(self):
+        # right == wall.width — still within bounds
+        wall = Wall(height=2400, width=1800)
+        placement = Placement(photo=Photo(height=400, width=300), x=1500, y=0)  # 1500 + 300 = 1800
+
+        assert is_within_bounds(placement, wall) is True
+
+    def test_touching_bottom_edge_exactly(self):
+        # bottom == wall.height — still within bounds
+        wall = Wall(height=2400, width=1800)
+        placement = Placement(photo=Photo(height=400, width=300), x=0, y=2000)  # 2000 + 400 = 2400
+
+        assert is_within_bounds(placement, wall) is True
+
+    def test_placed_at_origin(self):
+        wall = Wall(height=2400, width=1800)
+        placement = Placement(photo=Photo(height=400, width=300), x=0, y=0)
+
+        assert is_within_bounds(placement, wall) is True
+
+    def test_partially_outside_right_edge(self):
+        wall = Wall(height=2400, width=1800)
+        placement = Placement(photo=Photo(height=400, width=300), x=1600, y=0)  # 1600 + 300 = 1900 > 1800
+
+        assert is_within_bounds(placement, wall) is False
+
+    def test_partially_outside_bottom_edge(self):
+        wall = Wall(height=2400, width=1800)
+        placement = Placement(photo=Photo(height=400, width=300), x=0, y=2100)  # 2100 + 400 = 2500 > 2400
+
+        assert is_within_bounds(placement, wall) is False
+
+    def test_partially_outside_left_edge(self):
+        # x is negative — left edge beyond wall boundary
+        wall = Wall(height=2400, width=1800)
+        placement = Placement(photo=Photo(height=400, width=300), x=-10, y=0)
+
+        assert is_within_bounds(placement, wall) is False
+
+    def test_partially_outside_top_edge(self):
+        # y is negative — top edge beyond wall boundary
+        wall = Wall(height=2400, width=1800)
+        placement = Placement(photo=Photo(height=400, width=300), x=0, y=-10)
+
+        assert is_within_bounds(placement, wall) is False
+
+    def test_entirely_outside_wall(self):
+        wall = Wall(height=2400, width=1800)
+        placement = Placement(photo=Photo(height=400, width=300), x=2000, y=0)
+
+        assert is_within_bounds(placement, wall) is False
+
