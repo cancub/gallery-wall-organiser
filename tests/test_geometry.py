@@ -1,6 +1,11 @@
 import pytest
 
-from gallery_wall_organiser.geometry import is_within_bounds, overlaps_obstacle, rectangles_overlap
+from gallery_wall_organiser.geometry import (
+    is_within_bounds,
+    overlaps_obstacle,
+    placements_overlap,
+    rectangles_overlap,
+)
 from gallery_wall_organiser.models import Obstacle, Photo, Placement, Wall
 
 
@@ -230,4 +235,67 @@ class TestOverlapsObstacle:
         obstacle = Obstacle(x=500, y=500, height=50, width=50)
 
         assert overlaps_obstacle(placement, obstacle) is False
+
+
+class TestPlacementsOverlap:
+    def test_overlapping(self):
+        p1 = Placement(photo=Photo(height=100, width=100), x=0, y=0)
+        p2 = Placement(photo=Photo(height=100, width=100), x=50, y=50)
+
+        assert placements_overlap(p1, p2) is True
+
+    def test_one_contains_the_other(self):
+        p1 = Placement(photo=Photo(height=300, width=300), x=0, y=0)
+        p2 = Placement(photo=Photo(height=50, width=50), x=100, y=100)
+
+        assert placements_overlap(p1, p2) is True
+
+    def test_identical_position_and_size(self):
+        photo = Photo(height=100, width=100)
+        p1 = Placement(photo=photo, x=50, y=50)
+        p2 = Placement(photo=photo, x=50, y=50)
+
+        assert placements_overlap(p1, p2) is True
+
+    def test_overlap_is_symmetric(self):
+        p1 = Placement(photo=Photo(height=100, width=100), x=0, y=0)
+        p2 = Placement(photo=Photo(height=100, width=100), x=50, y=50)
+
+        assert placements_overlap(p1, p2) == placements_overlap(p2, p1)
+
+    def test_adjacent_horizontally(self):
+        p1 = Placement(photo=Photo(height=100, width=100), x=0, y=0)
+        p2 = Placement(photo=Photo(height=100, width=100), x=100, y=0)
+
+        assert placements_overlap(p1, p2) is False
+
+    def test_adjacent_vertically(self):
+        p1 = Placement(photo=Photo(height=100, width=100), x=0, y=0)
+        p2 = Placement(photo=Photo(height=100, width=100), x=0, y=100)
+
+        assert placements_overlap(p1, p2) is False
+
+    def test_adjacent_at_corner(self):
+        p1 = Placement(photo=Photo(height=100, width=100), x=0, y=0)
+        p2 = Placement(photo=Photo(height=100, width=100), x=100, y=100)
+
+        assert placements_overlap(p1, p2) is False
+
+    def test_separated_horizontally(self):
+        p1 = Placement(photo=Photo(height=100, width=100), x=0, y=0)
+        p2 = Placement(photo=Photo(height=100, width=100), x=300, y=0)
+
+        assert placements_overlap(p1, p2) is False
+
+    def test_separated_vertically(self):
+        p1 = Placement(photo=Photo(height=100, width=100), x=0, y=0)
+        p2 = Placement(photo=Photo(height=100, width=100), x=0, y=300)
+
+        assert placements_overlap(p1, p2) is False
+
+    def test_different_sized_photos_separated(self):
+        p1 = Placement(photo=Photo(height=200, width=100), x=0, y=0)
+        p2 = Placement(photo=Photo(height=50, width=300), x=200, y=0)
+
+        assert placements_overlap(p1, p2) is False
 

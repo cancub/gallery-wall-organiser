@@ -36,3 +36,8 @@ def is_within_bounds(placement: Placement, wall: Wall) -> bool:
 def overlaps_obstacle(placement: Placement, obstacle: Obstacle) -> bool:
     """Return True if a placement overlaps an obstacle (touching edges do not count)."""
     return rectangles_overlap(_placement_rect(placement), _obstacle_rect(obstacle))
+
+
+def placements_overlap(p1: Placement, p2: Placement) -> bool:
+    """Return True if two placements overlap (touching edges do not count)."""
+    return rectangles_overlap(_placement_rect(p1), _placement_rect(p2))
