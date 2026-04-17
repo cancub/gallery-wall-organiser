@@ -16,16 +16,18 @@ The optimizer uses **simulated annealing** to search for photo placements that m
 ## Installation
 
 ```bash
-pip install -r requirements.txt
+python -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
 ```
 
 ## Usage
 
 ```bash
-python main.py --wall 2400 1800 \
-               --photos 400 300  500 400  300 300 \
-               --obstacles 100 900 80 120 \
-               --eye-level 1450
+gallery-wall-organiser --wall 2400 1800 \
+                       --photos 400 300  500 400  300 300 \
+                       --obstacles 100 900 80 120 \
+                       --eye-level 1450
 ```
 
 - `--wall H W` — wall dimensions in mm
