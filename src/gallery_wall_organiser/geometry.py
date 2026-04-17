@@ -156,3 +156,28 @@ def obstacle_gap_variance(layout: Layout) -> float:
         ) - obs_bottom)
     mean = sum(gaps) / len(gaps)
     return sum((g - mean) ** 2 for g in gaps) / len(gaps)
+
+
+def compute_cost(layout: Layout) -> float:
+    """Return combined cost: penalties for overlaps/OOB + weighted metrics."""
+    placements = layout.placements
+    wall = layout.wall
+    penalty = 100_000.0
+    violations = sum(
+        not is_within_bounds(p, wall) for p in placements
+    ) + sum(
+        placements_overlap(placements[i], placements[j])
+        for i in range(len(placements))
+        for j in range(i + 1, len(placements))
+    ) + sum(
+        overlaps_obstacle(p, obs)
+        for p in placements
+        for obs in layout.obstacles
+    )
+    cost = violations * penalty
+    if len(placements) >= 2:
+        adjacency = build_adjacency(placements)
+        cost += gap_variance(placements, adjacency)
+    cost += quadrant_imbalance(layout)
+    cost += obstacle_gap_variance(layout)
+    return float(cost)

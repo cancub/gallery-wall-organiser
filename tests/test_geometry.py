@@ -2,6 +2,7 @@ import pytest
 
 from gallery_wall_organiser.geometry import (
     build_adjacency,
+    compute_cost,
     edge_distance,
     gap_variance,
     intersection_area,
@@ -1115,4 +1116,285 @@ class TestObstacleGapVarianceReturnsFloat:
         )
 
         assert isinstance(obstacle_gap_variance(layout), float)
+
+
+class TestComputeCostValidLayout:
+    def test_balanced_layout_returns_low_cost(self):
+        # 4 photos placed symmetrically on a large wall, no obstacles
+        wall = Wall(height=400, width=400)
+        layout = Layout(
+            wall=wall,
+            placements=[
+                Placement(photo=Photo(height=50, width=50), x=50, y=50),
+                Placement(photo=Photo(height=50, width=50), x=300, y=50),
+                Placement(photo=Photo(height=50, width=50), x=50, y=300),
+                Placement(photo=Photo(height=50, width=50), x=300, y=300),
+            ],
+            obstacles=[],
+            d=0,
+            eye_level=200,
+        )
+
+        cost = compute_cost(layout)
+
+        assert cost >= 0.0
+        # A balanced, valid layout should have moderate cost (no penalties)
+        assert cost < 100_000
+
+    def test_returns_float(self):
+        wall = Wall(height=400, width=400)
+        layout = Layout(
+            wall=wall,
+            placements=[
+                Placement(photo=Photo(height=50, width=50), x=50, y=50),
+            ],
+            obstacles=[],
+            d=0,
+            eye_level=200,
+        )
+
+        assert isinstance(compute_cost(layout), float)
+
+    def test_single_centered_photo(self):
+        wall = Wall(height=200, width=200)
+        layout = Layout(
+            wall=wall,
+            placements=[
+                Placement(photo=Photo(height=100, width=100), x=50, y=50),
+            ],
+            obstacles=[],
+            d=0,
+            eye_level=100,
+        )
+
+        cost = compute_cost(layout)
+
+        # Centered → quadrant imbalance = 0, no overlaps, within bounds
+        assert cost >= 0.0
+        assert cost < 100_000
+
+
+class TestComputeCostOverlapPenalty:
+    def test_overlapping_photos_very_high_cost(self):
+        wall = Wall(height=400, width=400)
+        overlapping = Layout(
+            wall=wall,
+            placements=[
+                Placement(photo=Photo(height=50, width=50), x=100, y=100),
+                Placement(photo=Photo(height=50, width=50), x=120, y=120),
+            ],
+            obstacles=[],
+            d=0,
+            eye_level=200,
+        )
+        non_overlapping = Layout(
+            wall=wall,
+            placements=[
+                Placement(photo=Photo(height=50, width=50), x=50, y=50),
+                Placement(photo=Photo(height=50, width=50), x=200, y=200),
+            ],
+            obstacles=[],
+            d=0,
+            eye_level=200,
+        )
+
+        assert compute_cost(overlapping) > compute_cost(non_overlapping)
+
+    def test_overlap_penalty_dominates(self):
+        # Overlapping cost should be much higher than a valid layout
+        wall = Wall(height=400, width=400)
+        overlapping = Layout(
+            wall=wall,
+            placements=[
+                Placement(photo=Photo(height=50, width=50), x=100, y=100),
+                Placement(photo=Photo(height=50, width=50), x=120, y=120),
+            ],
+            obstacles=[],
+            d=0,
+            eye_level=200,
+        )
+
+        assert compute_cost(overlapping) >= 100_000
+
+    def test_obstacle_overlap_very_high_cost(self):
+        wall = Wall(height=400, width=400)
+        overlaps_obs = Layout(
+            wall=wall,
+            placements=[
+                Placement(photo=Photo(height=50, width=50), x=100, y=100),
+            ],
+            obstacles=[Obstacle(x=110, y=110, height=30, width=30)],
+            d=0,
+            eye_level=200,
+        )
+        clear = Layout(
+            wall=wall,
+            placements=[
+                Placement(photo=Photo(height=50, width=50), x=50, y=50),
+            ],
+            obstacles=[Obstacle(x=300, y=300, height=30, width=30)],
+            d=0,
+            eye_level=200,
+        )
+
+        assert compute_cost(overlaps_obs) > compute_cost(clear)
+
+
+class TestComputeCostOutOfBounds:
+    def test_out_of_bounds_very_high_cost(self):
+        wall = Wall(height=200, width=200)
+        oob = Layout(
+            wall=wall,
+            placements=[
+                Placement(photo=Photo(height=50, width=50), x=180, y=180),
+            ],
+            obstacles=[],
+            d=0,
+            eye_level=100,
+        )
+
+        assert compute_cost(oob) >= 100_000
+
+    def test_out_of_bounds_higher_than_valid(self):
+        wall = Wall(height=200, width=200)
+        oob = Layout(
+            wall=wall,
+            placements=[
+                Placement(photo=Photo(height=50, width=50), x=-10, y=50),
+            ],
+            obstacles=[],
+            d=0,
+            eye_level=100,
+        )
+        valid = Layout(
+            wall=wall,
+            placements=[
+                Placement(photo=Photo(height=50, width=50), x=10, y=50),
+            ],
+            obstacles=[],
+            d=0,
+            eye_level=100,
+        )
+
+        assert compute_cost(oob) > compute_cost(valid)
+
+
+class TestComputeCostQuadrantImbalance:
+    def test_balanced_lower_than_unbalanced(self):
+        wall = Wall(height=400, width=400)
+        balanced = Layout(
+            wall=wall,
+            placements=[
+                Placement(photo=Photo(height=50, width=50), x=50, y=50),
+                Placement(photo=Photo(height=50, width=50), x=300, y=50),
+                Placement(photo=Photo(height=50, width=50), x=50, y=300),
+                Placement(photo=Photo(height=50, width=50), x=300, y=300),
+            ],
+            obstacles=[],
+            d=0,
+            eye_level=200,
+        )
+        unbalanced = Layout(
+            wall=wall,
+            placements=[
+                Placement(photo=Photo(height=50, width=50), x=10, y=10),
+                Placement(photo=Photo(height=50, width=50), x=60, y=10),
+                Placement(photo=Photo(height=50, width=50), x=10, y=60),
+                Placement(photo=Photo(height=50, width=50), x=60, y=60),
+            ],
+            obstacles=[],
+            d=0,
+            eye_level=200,
+        )
+
+        assert compute_cost(balanced) < compute_cost(unbalanced)
+
+
+class TestComputeCostGapVariance:
+    def test_uniform_gaps_lower_than_mixed(self):
+        wall = Wall(height=200, width=600)
+        # Uniform: 3 photos evenly spaced
+        uniform = Layout(
+            wall=wall,
+            placements=[
+                Placement(photo=Photo(height=50, width=50), x=100, y=75),
+                Placement(photo=Photo(height=50, width=50), x=275, y=75),
+                Placement(photo=Photo(height=50, width=50), x=450, y=75),
+            ],
+            obstacles=[],
+            d=0,
+            eye_level=100,
+        )
+        # Mixed: 3 photos with very uneven spacing
+        mixed = Layout(
+            wall=wall,
+            placements=[
+                Placement(photo=Photo(height=50, width=50), x=10, y=75),
+                Placement(photo=Photo(height=50, width=50), x=70, y=75),
+                Placement(photo=Photo(height=50, width=50), x=500, y=75),
+            ],
+            obstacles=[],
+            d=0,
+            eye_level=100,
+        )
+
+        assert compute_cost(uniform) < compute_cost(mixed)
+
+
+class TestComputeCostObstacleGapVariance:
+    def test_symmetric_obstacle_gaps_lower_than_asymmetric(self):
+        wall = Wall(height=200, width=200)
+        # Obstacle centered → symmetric gaps to walls
+        symmetric = Layout(
+            wall=wall,
+            placements=[
+                Placement(photo=Photo(height=20, width=20), x=0, y=0),
+            ],
+            obstacles=[Obstacle(x=75, y=75, height=50, width=50)],
+            d=0,
+            eye_level=100,
+        )
+        # Obstacle in corner → asymmetric gaps to walls
+        asymmetric = Layout(
+            wall=wall,
+            placements=[
+                Placement(photo=Photo(height=20, width=20), x=0, y=0),
+            ],
+            obstacles=[Obstacle(x=10, y=10, height=50, width=50)],
+            d=0,
+            eye_level=100,
+        )
+
+        assert compute_cost(symmetric) < compute_cost(asymmetric)
+
+
+class TestComputeCostNonNegative:
+    def test_cost_always_non_negative(self):
+        wall = Wall(height=200, width=200)
+        layout = Layout(
+            wall=wall,
+            placements=[
+                Placement(photo=Photo(height=50, width=50), x=75, y=75),
+            ],
+            obstacles=[],
+            d=0,
+            eye_level=100,
+        )
+
+        assert compute_cost(layout) >= 0.0
+
+    def test_empty_placements(self):
+        wall = Wall(height=200, width=200)
+        layout = Layout(
+            wall=wall,
+            placements=[],
+            obstacles=[],
+            d=0,
+            eye_level=100,
+        )
+
+        cost = compute_cost(layout)
+
+        assert isinstance(cost, float)
+        assert cost >= 0.0
 
