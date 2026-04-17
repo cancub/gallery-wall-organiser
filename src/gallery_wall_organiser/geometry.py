@@ -127,3 +127,32 @@ def quadrant_imbalance(layout: Layout) -> float:
     """Return max(areas) - min(areas) across the four quadrants."""
     areas = quadrant_areas(layout)
     return float(max(areas) - min(areas))
+
+
+def obstacle_gap_variance(layout: Layout) -> float:
+    """Return population variance of gaps from obstacle edges to nearest photo/wall edges."""
+    if not layout.obstacles:
+        return 0.0
+    placements = layout.placements
+    wall_w = float(layout.wall.width)
+    wall_h = float(layout.wall.height)
+    gaps: list[float] = []
+    for obs in layout.obstacles:
+        obs_left = obs.x
+        obs_right = obs.x + obs.width
+        obs_top = obs.y
+        obs_bottom = obs.y + obs.height
+        gaps.append(obs_left - max(
+            (p.right for p in placements if p.right <= obs_left), default=0.0,
+        ))
+        gaps.append(min(
+            (p.left for p in placements if p.left >= obs_right), default=wall_w,
+        ) - obs_right)
+        gaps.append(obs_top - max(
+            (p.bottom for p in placements if p.bottom <= obs_top), default=0.0,
+        ))
+        gaps.append(min(
+            (p.top for p in placements if p.top >= obs_bottom), default=wall_h,
+        ) - obs_bottom)
+    mean = sum(gaps) / len(gaps)
+    return sum((g - mean) ** 2 for g in gaps) / len(gaps)
