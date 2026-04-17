@@ -1,7 +1,7 @@
 import pytest
 
-from gallery_wall_organiser.geometry import is_within_bounds, rectangles_overlap
-from gallery_wall_organiser.models import Photo, Placement, Wall
+from gallery_wall_organiser.geometry import is_within_bounds, overlaps_obstacle, rectangles_overlap
+from gallery_wall_organiser.models import Obstacle, Photo, Placement, Wall
 
 
 # Each rectangle is (x, y, width, height) where (x, y) is the top-left corner.
@@ -176,4 +176,58 @@ class TestIsWithinBounds:
         placement = Placement(photo=Photo(height=400, width=300), x=2000, y=0)
 
         assert is_within_bounds(placement, wall) is False
+
+
+class TestOverlapsObstacle:
+    def test_overlap(self):
+        placement = Placement(photo=Photo(height=400, width=300), x=50, y=50)
+        obstacle = Obstacle(x=100, y=100, height=80, width=60)
+
+        assert overlaps_obstacle(placement, obstacle) is True
+
+    def test_placement_fully_covers_obstacle(self):
+        placement = Placement(photo=Photo(height=400, width=300), x=0, y=0)
+        obstacle = Obstacle(x=50, y=50, height=10, width=10)
+
+        assert overlaps_obstacle(placement, obstacle) is True
+
+    def test_obstacle_fully_covers_placement(self):
+        placement = Placement(photo=Photo(height=50, width=50), x=100, y=100)
+        obstacle = Obstacle(x=0, y=0, height=500, width=500)
+
+        assert overlaps_obstacle(placement, obstacle) is True
+
+    def test_adjacent_on_right_edge(self):
+        # placement right == obstacle left — touching, not overlapping
+        placement = Placement(photo=Photo(height=100, width=100), x=0, y=0)
+        obstacle = Obstacle(x=100, y=0, height=100, width=50)
+
+        assert overlaps_obstacle(placement, obstacle) is False
+
+    def test_adjacent_on_bottom_edge(self):
+        # placement bottom == obstacle top — touching, not overlapping
+        placement = Placement(photo=Photo(height=100, width=100), x=0, y=0)
+        obstacle = Obstacle(x=0, y=100, height=50, width=100)
+
+        assert overlaps_obstacle(placement, obstacle) is False
+
+    def test_adjacent_on_left_edge(self):
+        # obstacle right == placement left
+        placement = Placement(photo=Photo(height=100, width=100), x=100, y=0)
+        obstacle = Obstacle(x=0, y=0, height=100, width=100)
+
+        assert overlaps_obstacle(placement, obstacle) is False
+
+    def test_adjacent_on_top_edge(self):
+        # obstacle bottom == placement top
+        placement = Placement(photo=Photo(height=100, width=100), x=0, y=100)
+        obstacle = Obstacle(x=0, y=0, height=100, width=100)
+
+        assert overlaps_obstacle(placement, obstacle) is False
+
+    def test_clearly_separated(self):
+        placement = Placement(photo=Photo(height=100, width=100), x=0, y=0)
+        obstacle = Obstacle(x=500, y=500, height=50, width=50)
+
+        assert overlaps_obstacle(placement, obstacle) is False
 
