@@ -7,7 +7,11 @@ from gallery_wall_organiser.geometry import (
     placements_overlap,
 )
 from gallery_wall_organiser.models import Layout, Obstacle, Photo, Placement, Wall
-from gallery_wall_organiser.solver import initialize_grid
+from gallery_wall_organiser.solver import (
+    initialize_grid,
+    perturb_position,
+    swap_placements,
+)
 
 
 class TestInitializeGridReturnsLayout:
@@ -231,3 +235,201 @@ class TestInitializeGridMixedSizes:
         for i in range(len(placements)):
             for j in range(i + 1, len(placements)):
                 assert not placements_overlap(placements[i], placements[j])
+
+
+def _make_layout():
+    """Helper: 3-photo layout for perturbation/swap tests."""
+    wall = Wall(height=400, width=600)
+    return Layout(
+        wall=wall,
+        placements=[
+            Placement(photo=Photo(height=50, width=50), x=100, y=100),
+            Placement(photo=Photo(height=60, width=40), x=300, y=100),
+            Placement(photo=Photo(height=70, width=80), x=200, y=250),
+        ],
+        obstacles=[],
+        d=0,
+        eye_level=200,
+    )
+
+
+class TestPerturbPositionReturnsLayout:
+    def test_returns_layout(self):
+        layout = _make_layout()
+
+        result = perturb_position(layout, 0, 10.0)
+
+        assert isinstance(result, Layout)
+
+    def test_same_number_of_placements(self):
+        layout = _make_layout()
+
+        result = perturb_position(layout, 1, 10.0)
+
+        assert len(result.placements) == len(layout.placements)
+
+    def test_wall_unchanged(self):
+        layout = _make_layout()
+
+        result = perturb_position(layout, 0, 10.0)
+
+        assert result.wall is layout.wall
+
+    def test_obstacles_unchanged(self):
+        layout = _make_layout()
+
+        result = perturb_position(layout, 0, 10.0)
+
+        assert result.obstacles is layout.obstacles
+
+    def test_eye_level_unchanged(self):
+        layout = _make_layout()
+
+        result = perturb_position(layout, 0, 10.0)
+
+        assert result.eye_level == layout.eye_level
+
+
+class TestPerturbPositionTargetOnly:
+    def test_other_placements_unchanged(self):
+        layout = _make_layout()
+
+        result = perturb_position(layout, 1, 10.0)
+
+        # Index 0 and 2 should be identical
+        assert result.placements[0].x == layout.placements[0].x
+        assert result.placements[0].y == layout.placements[0].y
+        assert result.placements[0].photo is layout.placements[0].photo
+        assert result.placements[2].x == layout.placements[2].x
+        assert result.placements[2].y == layout.placements[2].y
+        assert result.placements[2].photo is layout.placements[2].photo
+
+    def test_targeted_photo_same(self):
+        layout = _make_layout()
+
+        result = perturb_position(layout, 0, 10.0)
+
+        assert result.placements[0].photo is layout.placements[0].photo
+
+
+class TestPerturbPositionShiftBounded:
+    def test_shift_within_max_delta(self):
+        layout = _make_layout()
+        max_delta = 15.0
+
+        result = perturb_position(layout, 0, max_delta)
+
+        dx = abs(result.placements[0].x - layout.placements[0].x)
+        dy = abs(result.placements[0].y - layout.placements[0].y)
+        assert dx <= max_delta
+        assert dy <= max_delta
+
+    def test_zero_delta_no_change(self):
+        layout = _make_layout()
+
+        result = perturb_position(layout, 0, 0.0)
+
+        assert result.placements[0].x == layout.placements[0].x
+        assert result.placements[0].y == layout.placements[0].y
+
+    def test_repeated_perturbations_all_bounded(self):
+        layout = _make_layout()
+        max_delta = 5.0
+
+        for _ in range(20):
+            result = perturb_position(layout, 0, max_delta)
+            dx = abs(result.placements[0].x - layout.placements[0].x)
+            dy = abs(result.placements[0].y - layout.placements[0].y)
+            assert dx <= max_delta
+            assert dy <= max_delta
+
+
+class TestPerturbPositionDoesNotMutate:
+    def test_original_layout_unchanged(self):
+        layout = _make_layout()
+        orig_x = layout.placements[0].x
+        orig_y = layout.placements[0].y
+
+        perturb_position(layout, 0, 10.0)
+
+        assert layout.placements[0].x == orig_x
+        assert layout.placements[0].y == orig_y
+
+
+class TestSwapPlacementsReturnsLayout:
+    def test_returns_layout(self):
+        layout = _make_layout()
+
+        result = swap_placements(layout, 0, 2)
+
+        assert isinstance(result, Layout)
+
+    def test_same_number_of_placements(self):
+        layout = _make_layout()
+
+        result = swap_placements(layout, 0, 1)
+
+        assert len(result.placements) == len(layout.placements)
+
+    def test_wall_unchanged(self):
+        layout = _make_layout()
+
+        result = swap_placements(layout, 0, 1)
+
+        assert result.wall is layout.wall
+
+
+class TestSwapPlacementsPositions:
+    def test_positions_swapped(self):
+        layout = _make_layout()
+
+        result = swap_placements(layout, 0, 2)
+
+        # Photo 0 should now be at photo 2's old position
+        assert result.placements[0].x == layout.placements[2].x
+        assert result.placements[0].y == layout.placements[2].y
+        # Photo 2 should now be at photo 0's old position
+        assert result.placements[2].x == layout.placements[0].x
+        assert result.placements[2].y == layout.placements[0].y
+
+    def test_photos_swapped(self):
+        layout = _make_layout()
+
+        result = swap_placements(layout, 0, 1)
+
+        assert result.placements[0].photo is layout.placements[1].photo
+        assert result.placements[1].photo is layout.placements[0].photo
+
+    def test_other_placement_unchanged(self):
+        layout = _make_layout()
+
+        result = swap_placements(layout, 0, 1)
+
+        assert result.placements[2].x == layout.placements[2].x
+        assert result.placements[2].y == layout.placements[2].y
+        assert result.placements[2].photo is layout.placements[2].photo
+
+
+class TestSwapPlacementsSameIndex:
+    def test_swap_same_index_no_change(self):
+        layout = _make_layout()
+
+        result = swap_placements(layout, 1, 1)
+
+        for k in range(len(layout.placements)):
+            assert result.placements[k].x == layout.placements[k].x
+            assert result.placements[k].y == layout.placements[k].y
+            assert result.placements[k].photo is layout.placements[k].photo
+
+
+class TestSwapPlacementsDoesNotMutate:
+    def test_original_layout_unchanged(self):
+        layout = _make_layout()
+        orig_photos = [p.photo for p in layout.placements]
+        orig_positions = [(p.x, p.y) for p in layout.placements]
+
+        swap_placements(layout, 0, 2)
+
+        for k in range(len(layout.placements)):
+            assert layout.placements[k].photo is orig_photos[k]
+            assert (layout.placements[k].x, layout.placements[k].y) == orig_positions[k]

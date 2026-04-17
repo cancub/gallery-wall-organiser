@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import random
 from typing import TYPE_CHECKING
 
 from gallery_wall_organiser.geometry import is_within_bounds, overlaps_obstacle, placements_overlap
@@ -57,3 +58,30 @@ def initialize_grid(
                 p = fallback
         placements.append(p)
     return Layout(wall=wall, placements=placements, obstacles=obstacles, d=0, eye_level=eye_level)
+
+
+def _with_placements(layout: Layout, placements: list[Placement]) -> Layout:
+    return Layout(
+        wall=layout.wall,
+        placements=placements,
+        obstacles=layout.obstacles,
+        d=layout.d,
+        eye_level=layout.eye_level,
+    )
+
+
+def perturb_position(layout: Layout, index: int, max_delta: float) -> Layout:
+    """Return a new Layout with placement at index shifted by a random delta."""
+    new_placements = list(layout.placements)
+    p = new_placements[index]
+    dx = random.uniform(-max_delta, max_delta)
+    dy = random.uniform(-max_delta, max_delta)
+    new_placements[index] = Placement(photo=p.photo, x=p.x + dx, y=p.y + dy)
+    return _with_placements(layout, new_placements)
+
+
+def swap_placements(layout: Layout, i: int, j: int) -> Layout:
+    """Return a new Layout with placements at indices i and j swapped."""
+    new_placements = list(layout.placements)
+    new_placements[i], new_placements[j] = new_placements[j], new_placements[i]
+    return _with_placements(layout, new_placements)
