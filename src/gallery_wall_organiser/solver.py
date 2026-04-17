@@ -4,7 +4,7 @@ import math
 import random
 from typing import TYPE_CHECKING
 
-from gallery_wall_organiser.geometry import is_within_bounds, overlaps_obstacle, placements_overlap
+from gallery_wall_organiser.geometry import compute_cost, is_within_bounds, overlaps_obstacle, placements_overlap
 from gallery_wall_organiser.models import Layout, Placement
 
 if TYPE_CHECKING:
@@ -100,3 +100,44 @@ def accept(delta_cost: float, temperature: float) -> bool:
     if temperature == 0:
         return False
     return random.random() < math.exp(-delta_cost / temperature)
+
+
+def _generate_candidate(layout: Layout, max_delta: float) -> Layout:
+    n = len(layout.placements)
+    if random.random() < 0.5:
+        idx = random.randint(0, n - 1)
+        return perturb_position(layout, idx, max_delta)
+    a = random.randint(0, n - 1)
+    b = random.randint(0, n - 1)
+    return swap_placements(layout, a, b)
+
+
+def optimize(
+    wall: Wall,
+    photos: list[Photo],
+    obstacles: list[Obstacle],
+    eye_level: float,
+    max_iterations: int,
+    seed: int,
+) -> Layout:
+    """Simulated annealing optimizer for photo placement."""
+    random.seed(seed)
+    current = initialize_grid(wall, photos, obstacles, eye_level)
+    current_cost = compute_cost(current)
+    best = current
+    best_cost = current_cost
+    if not photos:
+        return current
+    t0 = 1000.0
+    scale = max(wall.width, wall.height) * 0.1
+    for i in range(max_iterations):
+        progress = 1.0 - i / max_iterations
+        candidate = _generate_candidate(current, scale * progress)
+        candidate_cost = compute_cost(candidate)
+        if accept(candidate_cost - current_cost, t0 * progress):
+            current = candidate
+            current_cost = candidate_cost
+            if current_cost < best_cost:
+                best = current
+                best_cost = current_cost
+    return best

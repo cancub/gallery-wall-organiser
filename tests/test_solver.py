@@ -4,6 +4,7 @@ import random
 import pytest
 
 from gallery_wall_organiser.geometry import (
+    compute_cost,
     edge_distance,
     is_within_bounds,
     overlaps_obstacle,
@@ -13,6 +14,7 @@ from gallery_wall_organiser.models import Layout, Obstacle, Photo, Placement, Wa
 from gallery_wall_organiser.solver import (
     accept,
     initialize_grid,
+    optimize,
     perturb_position,
     swap_placements,
 )
@@ -553,3 +555,203 @@ class TestAcceptEdgeCases:
         random.seed(555)
         results3 = [accept(10.0, 5.0) for _ in range(10)]
         assert results2 == results3
+
+
+class TestOptimizeReturnsLayout:
+    def test_returns_layout(self):
+        wall = Wall(height=1000, width=1000)
+        photos = [Photo(height=100, width=100), Photo(height=100, width=100)]
+
+        result = optimize(wall, photos, [], eye_level=500, max_iterations=10, seed=42)
+
+        assert isinstance(result, Layout)
+
+    def test_layout_has_correct_wall(self):
+        wall = Wall(height=1000, width=1000)
+        photos = [Photo(height=100, width=100), Photo(height=100, width=100)]
+
+        result = optimize(wall, photos, [], eye_level=500, max_iterations=10, seed=42)
+
+        assert result.wall is wall
+
+    def test_layout_has_correct_eye_level(self):
+        wall = Wall(height=1000, width=1000)
+        photos = [Photo(height=100, width=100), Photo(height=100, width=100)]
+
+        result = optimize(wall, photos, [], eye_level=500, max_iterations=10, seed=42)
+
+        assert result.eye_level == 500
+
+    def test_placement_count_matches_photos(self):
+        wall = Wall(height=1000, width=1000)
+        photos = [Photo(height=100, width=100), Photo(height=100, width=100)]
+
+        result = optimize(wall, photos, [], eye_level=500, max_iterations=10, seed=42)
+
+        assert len(result.placements) == 2
+
+
+class TestOptimizeWithinBounds:
+    def test_all_placements_within_bounds(self):
+        wall = Wall(height=1000, width=1000)
+        photos = [Photo(height=100, width=100), Photo(height=100, width=100)]
+
+        result = optimize(wall, photos, [], eye_level=500, max_iterations=100, seed=42)
+
+        for p in result.placements:
+            assert is_within_bounds(p, wall), f"Placement at ({p.x}, {p.y}) out of bounds"
+
+    def test_three_photos_within_bounds(self):
+        wall = Wall(height=800, width=800)
+        photos = [
+            Photo(height=80, width=80),
+            Photo(height=60, width=60),
+            Photo(height=70, width=70),
+        ]
+
+        result = optimize(wall, photos, [], eye_level=400, max_iterations=100, seed=99)
+
+        for p in result.placements:
+            assert is_within_bounds(p, wall)
+
+
+class TestOptimizeNoOverlaps:
+    def test_no_placements_overlap(self):
+        wall = Wall(height=1000, width=1000)
+        photos = [Photo(height=100, width=100), Photo(height=100, width=100)]
+
+        result = optimize(wall, photos, [], eye_level=500, max_iterations=100, seed=42)
+
+        p = result.placements
+        for i in range(len(p)):
+            for j in range(i + 1, len(p)):
+                assert not placements_overlap(p[i], p[j]), f"Placements {i} and {j} overlap"
+
+    def test_no_placement_overlaps_obstacle(self):
+        wall = Wall(height=1000, width=1000)
+        photos = [Photo(height=100, width=100), Photo(height=100, width=100)]
+        obstacles = [Obstacle(x=450, y=450, height=100, width=100)]
+
+        result = optimize(wall, photos, obstacles, eye_level=500, max_iterations=100, seed=42)
+
+        for p in result.placements:
+            for obs in obstacles:
+                assert not overlaps_obstacle(p, obs)
+
+
+class TestOptimizeCostImprovement:
+    def test_cost_less_than_or_equal_to_initial_grid(self):
+        """Optimizer should produce cost <= initial grid layout cost."""
+        wall = Wall(height=1000, width=1000)
+        photos = [Photo(height=100, width=100), Photo(height=100, width=100)]
+
+        initial = initialize_grid(wall, photos, [], 500)
+        initial_cost = compute_cost(initial)
+
+        result = optimize(wall, photos, [], eye_level=500, max_iterations=500, seed=42)
+        result_cost = compute_cost(result)
+
+        assert result_cost <= initial_cost, (
+            f"Optimized cost {result_cost} > initial cost {initial_cost}"
+        )
+
+    def test_cost_improvement_with_more_iterations(self):
+        """More iterations should produce cost <= fewer iterations."""
+        wall = Wall(height=1000, width=1000)
+        photos = [Photo(height=100, width=100), Photo(height=100, width=100)]
+
+        short = optimize(wall, photos, [], eye_level=500, max_iterations=10, seed=42)
+        long = optimize(wall, photos, [], eye_level=500, max_iterations=500, seed=42)
+
+        assert compute_cost(long) <= compute_cost(short)
+
+
+class TestOptimizeDeterministic:
+    def test_same_seed_same_result(self):
+        """Same seed should produce identical results."""
+        wall = Wall(height=1000, width=1000)
+        photos = [Photo(height=100, width=100), Photo(height=100, width=100)]
+
+        result1 = optimize(wall, photos, [], eye_level=500, max_iterations=50, seed=42)
+        result2 = optimize(wall, photos, [], eye_level=500, max_iterations=50, seed=42)
+
+        for p1, p2 in zip(result1.placements, result2.placements):
+            assert p1.x == p2.x
+            assert p1.y == p2.y
+
+    def test_different_seed_different_result(self):
+        """Different seeds should (usually) produce different results."""
+        wall = Wall(height=1000, width=1000)
+        photos = [
+            Photo(height=100, width=150),
+            Photo(height=80, width=120),
+            Photo(height=60, width=90),
+        ]
+
+        result1 = optimize(wall, photos, [], eye_level=500, max_iterations=200, seed=42)
+        result2 = optimize(wall, photos, [], eye_level=500, max_iterations=200, seed=99)
+
+        positions1 = [(p.x, p.y) for p in result1.placements]
+        positions2 = [(p.x, p.y) for p in result2.placements]
+        assert positions1 != positions2
+
+
+class TestOptimizeWithObstacles:
+    def test_respects_obstacles(self):
+        wall = Wall(height=1000, width=1000)
+        photos = [Photo(height=100, width=100), Photo(height=100, width=100)]
+        obstacles = [Obstacle(x=400, y=400, height=200, width=200)]
+
+        result = optimize(wall, photos, obstacles, eye_level=500, max_iterations=100, seed=42)
+
+        assert isinstance(result, Layout)
+        assert result.obstacles == obstacles
+        for p in result.placements:
+            assert is_within_bounds(p, wall)
+            for obs in obstacles:
+                assert not overlaps_obstacle(p, obs)
+
+    def test_multiple_obstacles(self):
+        wall = Wall(height=1000, width=1000)
+        photos = [
+            Photo(height=80, width=80),
+            Photo(height=80, width=80),
+            Photo(height=80, width=80),
+        ]
+        obstacles = [
+            Obstacle(x=200, y=200, height=100, width=100),
+            Obstacle(x=600, y=600, height=100, width=100),
+        ]
+
+        result = optimize(wall, photos, obstacles, eye_level=500, max_iterations=100, seed=42)
+
+        for p in result.placements:
+            for obs in obstacles:
+                assert not overlaps_obstacle(p, obs)
+
+
+class TestOptimizeSinglePhoto:
+    def test_single_photo(self):
+        wall = Wall(height=1000, width=1000)
+        photos = [Photo(height=100, width=100)]
+
+        result = optimize(wall, photos, [], eye_level=500, max_iterations=50, seed=42)
+
+        assert len(result.placements) == 1
+        assert is_within_bounds(result.placements[0], wall)
+
+
+class TestOptimizePreservesPhotos:
+    def test_all_photos_present(self):
+        wall = Wall(height=1000, width=1000)
+        photos = [
+            Photo(height=100, width=150),
+            Photo(height=50, width=50),
+            Photo(height=80, width=120),
+        ]
+
+        result = optimize(wall, photos, [], eye_level=500, max_iterations=100, seed=42)
+
+        result_dims = sorted([(p.photo.height, p.photo.width) for p in result.placements])
+        expected_dims = sorted([(p.height, p.width) for p in photos])
+        assert result_dims == expected_dims
