@@ -1,6 +1,9 @@
 import pytest
 
 from gallery_wall_organiser.geometry import (
+    build_adjacency,
+    edge_distance,
+    gap_variance,
     is_within_bounds,
     overlaps_obstacle,
     placements_overlap,
@@ -298,4 +301,307 @@ class TestPlacementsOverlap:
         p2 = Placement(photo=Photo(height=50, width=300), x=200, y=0)
 
         assert placements_overlap(p1, p2) is False
+
+
+class TestEdgeDistanceHorizontallySeparated:
+    def test_same_row_gap_between(self):
+        # p1: x=[0,100], y=[0,100]; p2: x=[150,250], y=[0,100]
+        # horizontal gap = 150 - 100 = 50; vertically aligned → distance = 50
+        p1 = Placement(photo=Photo(height=100, width=100), x=0, y=0)
+        p2 = Placement(photo=Photo(height=100, width=100), x=150, y=0)
+
+        assert edge_distance(p1, p2) == 50.0
+
+    def test_symmetry(self):
+        p1 = Placement(photo=Photo(height=100, width=100), x=0, y=0)
+        p2 = Placement(photo=Photo(height=100, width=100), x=150, y=0)
+
+        assert edge_distance(p1, p2) == edge_distance(p2, p1)
+
+    def test_different_widths(self):
+        # p1: x=[0,200], y=[0,100]; p2: x=[250,300], y=[0,100]
+        # horizontal gap = 250 - 200 = 50
+        p1 = Placement(photo=Photo(height=100, width=200), x=0, y=0)
+        p2 = Placement(photo=Photo(height=100, width=50), x=250, y=0)
+
+        assert edge_distance(p1, p2) == 50.0
+
+
+class TestEdgeDistanceVerticallySeparated:
+    def test_same_column_gap_between(self):
+        # p1: x=[0,100], y=[0,100]; p2: x=[0,100], y=[200,300]
+        # vertical gap = 200 - 100 = 100; horizontally aligned → distance = 100
+        p1 = Placement(photo=Photo(height=100, width=100), x=0, y=0)
+        p2 = Placement(photo=Photo(height=100, width=100), x=0, y=200)
+
+        assert edge_distance(p1, p2) == 100.0
+
+    def test_symmetry(self):
+        p1 = Placement(photo=Photo(height=100, width=100), x=0, y=0)
+        p2 = Placement(photo=Photo(height=100, width=100), x=0, y=200)
+
+        assert edge_distance(p1, p2) == edge_distance(p2, p1)
+
+    def test_different_heights(self):
+        # p1: x=[0,100], y=[0,50]; p2: x=[0,100], y=[80,280]
+        # vertical gap = 80 - 50 = 30
+        p1 = Placement(photo=Photo(height=50, width=100), x=0, y=0)
+        p2 = Placement(photo=Photo(height=200, width=100), x=0, y=80)
+
+        assert edge_distance(p1, p2) == 30.0
+
+
+class TestEdgeDistanceDiagonallySeparated:
+    def test_diagonal_separation(self):
+        # p1: x=[0,100], y=[0,100]; p2: x=[200,300], y=[200,300]
+        # horizontal gap = 200 - 100 = 100; vertical gap = 200 - 100 = 100
+        # distance = sqrt(100^2 + 100^2) ≈ 141.42
+        p1 = Placement(photo=Photo(height=100, width=100), x=0, y=0)
+        p2 = Placement(photo=Photo(height=100, width=100), x=200, y=200)
+
+        assert edge_distance(p1, p2) == pytest.approx(141.4213562373095)
+
+    def test_diagonal_symmetry(self):
+        p1 = Placement(photo=Photo(height=100, width=100), x=0, y=0)
+        p2 = Placement(photo=Photo(height=100, width=100), x=200, y=200)
+
+        assert edge_distance(p1, p2) == edge_distance(p2, p1)
+
+    def test_unequal_gaps(self):
+        # p1: x=[0,100], y=[0,100]; p2: x=[140,240], y=[200,300]
+        # horizontal gap = 140 - 100 = 40; vertical gap = 200 - 100 = 100
+        # distance = sqrt(40^2 + 100^2) = sqrt(1600 + 10000) = sqrt(11600)
+        p1 = Placement(photo=Photo(height=100, width=100), x=0, y=0)
+        p2 = Placement(photo=Photo(height=100, width=100), x=140, y=200)
+
+        assert edge_distance(p1, p2) == pytest.approx(107.7032961426901)
+
+    def test_opposite_diagonal(self):
+        # p2 is top-right of p1: separated both horizontally and vertically
+        # p1: x=[100,200], y=[200,300]; p2: x=[300,400], y=[0,100]
+        # horizontal gap = 300 - 200 = 100; vertical gap = 200 - 100 = 100
+        # distance = sqrt(100^2 + 100^2)
+        p1 = Placement(photo=Photo(height=100, width=100), x=100, y=200)
+        p2 = Placement(photo=Photo(height=100, width=100), x=300, y=0)
+
+        assert edge_distance(p1, p2) == pytest.approx(141.4213562373095)
+
+
+class TestEdgeDistanceAdjacent:
+    def test_adjacent_horizontally(self):
+        # p1 right edge == p2 left edge → distance = 0
+        p1 = Placement(photo=Photo(height=100, width=100), x=0, y=0)
+        p2 = Placement(photo=Photo(height=100, width=100), x=100, y=0)
+
+        assert edge_distance(p1, p2) == 0.0
+
+    def test_adjacent_vertically(self):
+        # p1 bottom edge == p2 top edge → distance = 0
+        p1 = Placement(photo=Photo(height=100, width=100), x=0, y=0)
+        p2 = Placement(photo=Photo(height=100, width=100), x=0, y=100)
+
+        assert edge_distance(p1, p2) == 0.0
+
+    def test_adjacent_at_corner(self):
+        # touching at single corner → distance = 0
+        p1 = Placement(photo=Photo(height=100, width=100), x=0, y=0)
+        p2 = Placement(photo=Photo(height=100, width=100), x=100, y=100)
+
+        assert edge_distance(p1, p2) == 0.0
+
+    def test_overlapping_returns_zero(self):
+        # overlapping placements should also return 0
+        p1 = Placement(photo=Photo(height=100, width=100), x=0, y=0)
+        p2 = Placement(photo=Photo(height=100, width=100), x=50, y=50)
+
+        assert edge_distance(p1, p2) == 0.0
+
+
+class TestBuildAdjacencyTwoPlacements:
+    def test_returns_single_edge(self):
+        placements = [
+            Placement(photo=Photo(height=100, width=100), x=0, y=0),
+            Placement(photo=Photo(height=100, width=100), x=300, y=0),
+        ]
+
+        result = build_adjacency(placements)
+
+        assert result == [(0, 1)]
+
+    def test_edge_indices_are_sorted(self):
+        # Each tuple should have smaller index first
+        placements = [
+            Placement(photo=Photo(height=100, width=100), x=300, y=0),
+            Placement(photo=Photo(height=100, width=100), x=0, y=0),
+        ]
+
+        result = build_adjacency(placements)
+
+        for i, j in result:
+            assert i < j
+
+
+class TestBuildAdjacencyThreePlacements:
+    def test_triangle_returns_three_edges(self):
+        # Three placements forming a triangle — Delaunay connects all three
+        placements = [
+            Placement(photo=Photo(height=50, width=50), x=0, y=0),
+            Placement(photo=Photo(height=50, width=50), x=400, y=0),
+            Placement(photo=Photo(height=50, width=50), x=200, y=400),
+        ]
+
+        result = build_adjacency(placements)
+
+        assert len(result) == 3
+        assert (0, 1) in result
+        assert (0, 2) in result
+        assert (1, 2) in result
+
+    def test_collinear_returns_two_edges(self):
+        # Three collinear placements — middle connects to both ends, ends not connected
+        placements = [
+            Placement(photo=Photo(height=50, width=50), x=0, y=0),
+            Placement(photo=Photo(height=50, width=50), x=200, y=0),
+            Placement(photo=Photo(height=50, width=50), x=400, y=0),
+        ]
+
+        result = build_adjacency(placements)
+
+        assert len(result) == 2
+        assert (0, 1) in result
+        assert (1, 2) in result
+
+    def test_no_duplicate_edges(self):
+        placements = [
+            Placement(photo=Photo(height=50, width=50), x=0, y=0),
+            Placement(photo=Photo(height=50, width=50), x=400, y=0),
+            Placement(photo=Photo(height=50, width=50), x=200, y=400),
+        ]
+
+        result = build_adjacency(placements)
+
+        assert len(result) == len(set(result))
+
+
+class TestBuildAdjacencyFourPlacements:
+    def test_square_returns_five_edges(self):
+        # Four placements at corners of a square — Delaunay produces 4 outer + 1 diagonal = 5
+        placements = [
+            Placement(photo=Photo(height=50, width=50), x=0, y=0),
+            Placement(photo=Photo(height=50, width=50), x=400, y=0),
+            Placement(photo=Photo(height=50, width=50), x=400, y=400),
+            Placement(photo=Photo(height=50, width=50), x=0, y=400),
+        ]
+
+        result = build_adjacency(placements)
+
+        # 4 edges of the square + 1 diagonal = 5
+        assert len(result) == 5
+
+    def test_square_contains_all_perimeter_edges(self):
+        placements = [
+            Placement(photo=Photo(height=50, width=50), x=0, y=0),
+            Placement(photo=Photo(height=50, width=50), x=400, y=0),
+            Placement(photo=Photo(height=50, width=50), x=400, y=400),
+            Placement(photo=Photo(height=50, width=50), x=0, y=400),
+        ]
+
+        result = build_adjacency(placements)
+
+        assert (0, 1) in result
+        assert (1, 2) in result
+        assert (2, 3) in result
+        assert (0, 3) in result
+
+    def test_returns_list_of_tuples(self):
+        placements = [
+            Placement(photo=Photo(height=50, width=50), x=0, y=0),
+            Placement(photo=Photo(height=50, width=50), x=400, y=0),
+            Placement(photo=Photo(height=50, width=50), x=400, y=400),
+            Placement(photo=Photo(height=50, width=50), x=0, y=400),
+        ]
+
+        result = build_adjacency(placements)
+
+        assert isinstance(result, list)
+        for edge in result:
+            assert isinstance(edge, tuple)
+            assert len(edge) == 2
+
+
+class TestGapVarianceEqualGaps:
+    def test_two_pairs_equal_gaps(self):
+        # Three placements in a row, equal 50-unit gaps between them
+        # p0: x=[0,100], p1: x=[150,250], p2: x=[300,400] — all y=[0,100]
+        # edge_distance(p0,p1) = 50, edge_distance(p1,p2) = 50
+        # variance of [50, 50] = 0.0
+        placements = [
+            Placement(photo=Photo(height=100, width=100), x=0, y=0),
+            Placement(photo=Photo(height=100, width=100), x=150, y=0),
+            Placement(photo=Photo(height=100, width=100), x=300, y=0),
+        ]
+        adjacency = [(0, 1), (1, 2)]
+
+        assert gap_variance(placements, adjacency) == 0.0
+
+    def test_identical_placements_zero_gaps(self):
+        # Two overlapping placements — both gaps are 0 → variance = 0
+        placements = [
+            Placement(photo=Photo(height=100, width=100), x=0, y=0),
+            Placement(photo=Photo(height=100, width=100), x=0, y=0),
+        ]
+        adjacency = [(0, 1)]
+
+        assert gap_variance(placements, adjacency) == 0.0
+
+
+class TestGapVarianceMixedGaps:
+    def test_two_different_gaps(self):
+        # p0: x=[0,100], p1: x=[150,250], p2: x=[400,500] — all y=[0,100]
+        # edge_distance(p0,p1) = 50, edge_distance(p1,p2) = 150
+        # mean = 100, variance = ((50-100)^2 + (150-100)^2) / 2 = (2500+2500)/2 = 2500.0
+        placements = [
+            Placement(photo=Photo(height=100, width=100), x=0, y=0),
+            Placement(photo=Photo(height=100, width=100), x=150, y=0),
+            Placement(photo=Photo(height=100, width=100), x=400, y=0),
+        ]
+        adjacency = [(0, 1), (1, 2)]
+
+        assert gap_variance(placements, adjacency) == pytest.approx(2500.0)
+
+    def test_three_different_gaps(self):
+        # p0: x=[0,100] y=[0,100], p1: x=[200,300] y=[0,100], p2: x=[500,600] y=[0,100]
+        # edge_distance(p0,p1) = 100, edge_distance(p1,p2) = 200, edge_distance(p0,p2) = 400
+        # mean = (100+200+400)/3 ≈ 233.333
+        # var = ((100-233.333)^2 + (200-233.333)^2 + (400-233.333)^2) / 3
+        #     = (17777.78 + 1111.11 + 27777.78) / 3 = 46666.67 / 3 ≈ 15555.56
+        placements = [
+            Placement(photo=Photo(height=100, width=100), x=0, y=0),
+            Placement(photo=Photo(height=100, width=100), x=200, y=0),
+            Placement(photo=Photo(height=100, width=100), x=500, y=0),
+        ]
+        adjacency = [(0, 1), (1, 2), (0, 2)]
+
+        assert gap_variance(placements, adjacency) == pytest.approx(15555.555555555555)
+
+
+class TestGapVarianceSinglePair:
+    def test_single_edge_returns_zero(self):
+        # Variance of a single value is 0
+        placements = [
+            Placement(photo=Photo(height=100, width=100), x=0, y=0),
+            Placement(photo=Photo(height=100, width=100), x=200, y=0),
+        ]
+        adjacency = [(0, 1)]
+
+        assert gap_variance(placements, adjacency) == 0.0
+
+    def test_returns_float(self):
+        placements = [
+            Placement(photo=Photo(height=100, width=100), x=0, y=0),
+            Placement(photo=Photo(height=100, width=100), x=200, y=0),
+        ]
+        adjacency = [(0, 1)]
+
+        assert isinstance(gap_variance(placements, adjacency), float)
 
