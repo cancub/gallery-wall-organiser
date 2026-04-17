@@ -7,7 +7,7 @@ import numpy as np
 from scipy.spatial import Delaunay, QhullError
 
 if TYPE_CHECKING:
-    from gallery_wall_organiser.models import Obstacle, Placement, Wall
+    from gallery_wall_organiser.models import Layout, Obstacle, Placement, Wall
 
 Rectangle = tuple[float, float, float, float]  # (x, y, width, height)
 
@@ -92,3 +92,38 @@ def gap_variance(
     distances = [edge_distance(placements[i], placements[j]) for i, j in adjacency]
     mean = sum(distances) / len(distances)
     return sum((d - mean) ** 2 for d in distances) / len(distances)
+
+
+def intersection_area(rect1: Rectangle, rect2: Rectangle) -> float:
+    """Return the area of intersection between two rectangles."""
+    x1, y1, w1, h1 = rect1
+    x2, y2, w2, h2 = rect2
+    overlap_w = max(0, min(x1 + w1, x2 + w2) - max(x1, x2))
+    overlap_h = max(0, min(y1 + h1, y2 + h2) - max(y1, y2))
+    return float(overlap_w * overlap_h)
+
+
+def quadrant_areas(layout: Layout) -> tuple[float, float, float, float]:
+    """Return total photo area in each quadrant (TL, TR, BL, BR)."""
+    cx = layout.horizontal_center
+    cy = layout.vertical_split
+    w = layout.wall.width
+    h = layout.wall.height
+    quadrants = (
+        (0, 0, cx, cy),        # top-left
+        (cx, 0, w - cx, cy),   # top-right
+        (0, cy, cx, h - cy),   # bottom-left
+        (cx, cy, w - cx, h - cy),  # bottom-right
+    )
+    areas = [0.0, 0.0, 0.0, 0.0]
+    for p in layout.placements:
+        rect = _placement_rect(p)
+        for i, q in enumerate(quadrants):
+            areas[i] += intersection_area(rect, q)
+    return (areas[0], areas[1], areas[2], areas[3])
+
+
+def quadrant_imbalance(layout: Layout) -> float:
+    """Return max(areas) - min(areas) across the four quadrants."""
+    areas = quadrant_areas(layout)
+    return float(max(areas) - min(areas))

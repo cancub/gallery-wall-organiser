@@ -4,12 +4,15 @@ from gallery_wall_organiser.geometry import (
     build_adjacency,
     edge_distance,
     gap_variance,
+    intersection_area,
     is_within_bounds,
     overlaps_obstacle,
     placements_overlap,
+    quadrant_areas,
+    quadrant_imbalance,
     rectangles_overlap,
 )
-from gallery_wall_organiser.models import Obstacle, Photo, Placement, Wall
+from gallery_wall_organiser.models import Layout, Obstacle, Photo, Placement, Wall
 
 
 # Each rectangle is (x, y, width, height) where (x, y) is the top-left corner.
@@ -604,4 +607,315 @@ class TestGapVarianceSinglePair:
         adjacency = [(0, 1)]
 
         assert isinstance(gap_variance(placements, adjacency), float)
+
+
+class TestIntersectionAreaFullOverlap:
+    def test_identical_rectangles(self):
+        r = (0, 0, 100, 200)
+
+        assert intersection_area(r, r) == 20000.0
+
+    def test_is_symmetric(self):
+        r1 = (10, 20, 100, 200)
+        r2 = (50, 60, 80, 120)
+
+        assert intersection_area(r1, r2) == intersection_area(r2, r1)
+
+
+class TestIntersectionAreaPartialOverlap:
+    def test_overlap_from_right(self):
+        # r1: x=[0,100], y=[0,100]; r2: x=[60,160], y=[0,100]
+        # overlap: x=[60,100], y=[0,100] → 40 * 100 = 4000
+        r1 = (0, 0, 100, 100)
+        r2 = (60, 0, 100, 100)
+
+        assert intersection_area(r1, r2) == 4000.0
+
+    def test_overlap_from_below(self):
+        # r1: x=[0,100], y=[0,100]; r2: x=[0,100], y=[70,170]
+        # overlap: x=[0,100], y=[70,100] → 100 * 30 = 3000
+        r1 = (0, 0, 100, 100)
+        r2 = (0, 70, 100, 100)
+
+        assert intersection_area(r1, r2) == 3000.0
+
+    def test_overlap_diagonal(self):
+        # r1: x=[0,100], y=[0,100]; r2: x=[50,150], y=[50,150]
+        # overlap: x=[50,100], y=[50,100] → 50 * 50 = 2500
+        r1 = (0, 0, 100, 100)
+        r2 = (50, 50, 100, 100)
+
+        assert intersection_area(r1, r2) == 2500.0
+
+
+class TestIntersectionAreaNoOverlap:
+    def test_separated_horizontally(self):
+        r1 = (0, 0, 100, 100)
+        r2 = (200, 0, 100, 100)
+
+        assert intersection_area(r1, r2) == 0.0
+
+    def test_separated_vertically(self):
+        r1 = (0, 0, 100, 100)
+        r2 = (0, 200, 100, 100)
+
+        assert intersection_area(r1, r2) == 0.0
+
+    def test_touching_edges(self):
+        # Touching but not overlapping → 0
+        r1 = (0, 0, 100, 100)
+        r2 = (100, 0, 100, 100)
+
+        assert intersection_area(r1, r2) == 0.0
+
+    def test_touching_at_corner(self):
+        r1 = (0, 0, 100, 100)
+        r2 = (100, 100, 100, 100)
+
+        assert intersection_area(r1, r2) == 0.0
+
+
+class TestIntersectionAreaContainment:
+    def test_r2_inside_r1(self):
+        # r1: x=[0,200], y=[0,200]; r2: x=[50,100], y=[50,100]
+        # overlap = entire r2 → 50 * 50 = 2500
+        r1 = (0, 0, 200, 200)
+        r2 = (50, 50, 50, 50)
+
+        assert intersection_area(r1, r2) == 2500.0
+
+    def test_r1_inside_r2(self):
+        # overlap = entire r1 → 50 * 50 = 2500
+        r1 = (50, 50, 50, 50)
+        r2 = (0, 0, 200, 200)
+
+        assert intersection_area(r1, r2) == 2500.0
+
+    def test_returns_float(self):
+        r1 = (0, 0, 100, 100)
+        r2 = (25, 25, 50, 50)
+
+        assert isinstance(intersection_area(r1, r2), float)
+
+
+class TestQuadrantAreasCenteredPhoto:
+    def test_centered_photo_spans_all_four_equally(self):
+        # Wall 200x200, eye_level=100 → center=(100,100)
+        # Photo 100x100 placed at (50,50) → x=[50,150], y=[50,150]
+        # Each quadrant gets a 50x50 slice = 2500
+        wall = Wall(height=200, width=200)
+        photo = Photo(height=100, width=100)
+        layout = Layout(
+            wall=wall,
+            placements=[Placement(photo=photo, x=50, y=50)],
+            obstacles=[],
+            d=0,
+            eye_level=100,
+        )
+
+        result = quadrant_areas(layout)
+
+        assert result == (2500.0, 2500.0, 2500.0, 2500.0)
+
+    def test_returns_tuple_of_four_floats(self):
+        wall = Wall(height=200, width=200)
+        layout = Layout(
+            wall=wall,
+            placements=[Placement(photo=Photo(height=50, width=50), x=0, y=0)],
+            obstacles=[],
+            d=0,
+            eye_level=100,
+        )
+
+        result = quadrant_areas(layout)
+
+        assert isinstance(result, tuple)
+        assert len(result) == 4
+        assert all(isinstance(a, float) for a in result)
+
+
+class TestQuadrantAreasInOneQuadrant:
+    def test_photo_entirely_in_top_left(self):
+        # Wall 400x400, eye_level=200, center=200
+        # Photo 50x50 at (10,10) → x=[10,60], y=[10,60] — all in TL
+        wall = Wall(height=400, width=400)
+        layout = Layout(
+            wall=wall,
+            placements=[Placement(photo=Photo(height=50, width=50), x=10, y=10)],
+            obstacles=[],
+            d=0,
+            eye_level=200,
+        )
+
+        assert quadrant_areas(layout) == (2500.0, 0.0, 0.0, 0.0)
+
+    def test_photo_entirely_in_top_right(self):
+        wall = Wall(height=400, width=400)
+        layout = Layout(
+            wall=wall,
+            placements=[Placement(photo=Photo(height=50, width=50), x=300, y=10)],
+            obstacles=[],
+            d=0,
+            eye_level=200,
+        )
+
+        assert quadrant_areas(layout) == (0.0, 2500.0, 0.0, 0.0)
+
+    def test_photo_entirely_in_bottom_left(self):
+        wall = Wall(height=400, width=400)
+        layout = Layout(
+            wall=wall,
+            placements=[Placement(photo=Photo(height=50, width=50), x=10, y=300)],
+            obstacles=[],
+            d=0,
+            eye_level=200,
+        )
+
+        assert quadrant_areas(layout) == (0.0, 0.0, 2500.0, 0.0)
+
+    def test_photo_entirely_in_bottom_right(self):
+        wall = Wall(height=400, width=400)
+        layout = Layout(
+            wall=wall,
+            placements=[Placement(photo=Photo(height=50, width=50), x=300, y=300)],
+            obstacles=[],
+            d=0,
+            eye_level=200,
+        )
+
+        assert quadrant_areas(layout) == (0.0, 0.0, 0.0, 2500.0)
+
+
+class TestQuadrantAreasMultiplePhotos:
+    def test_two_photos_in_different_quadrants(self):
+        # Wall 400x400, eye_level=200
+        # Photo A 50x50 at (10,10) in TL → 2500
+        # Photo B 80x60 at (300,300) in BR → 4800
+        wall = Wall(height=400, width=400)
+        layout = Layout(
+            wall=wall,
+            placements=[
+                Placement(photo=Photo(height=50, width=50), x=10, y=10),
+                Placement(photo=Photo(height=80, width=60), x=300, y=300),
+            ],
+            obstacles=[],
+            d=0,
+            eye_level=200,
+        )
+
+        assert quadrant_areas(layout) == (2500.0, 0.0, 0.0, 4800.0)
+
+    def test_no_placements(self):
+        wall = Wall(height=400, width=400)
+        layout = Layout(
+            wall=wall,
+            placements=[],
+            obstacles=[],
+            d=0,
+            eye_level=200,
+        )
+
+        assert quadrant_areas(layout) == (0.0, 0.0, 0.0, 0.0)
+
+    def test_photo_spanning_two_quadrants_horizontally(self):
+        # Wall 400x400, eye_level=200, center=200
+        # Photo 50x100 at (150,10) → x=[150,250], y=[10,60]
+        # TL: x=[150,200] × y=[10,60] = 50×50 = 2500
+        # TR: x=[200,250] × y=[10,60] = 50×50 = 2500
+        wall = Wall(height=400, width=400)
+        layout = Layout(
+            wall=wall,
+            placements=[Placement(photo=Photo(height=50, width=100), x=150, y=10)],
+            obstacles=[],
+            d=0,
+            eye_level=200,
+        )
+
+        assert quadrant_areas(layout) == (2500.0, 2500.0, 0.0, 0.0)
+
+
+class TestQuadrantImbalanceBalanced:
+    def test_equal_area_in_all_quadrants(self):
+        # Centered photo splits equally → imbalance = 0
+        wall = Wall(height=200, width=200)
+        layout = Layout(
+            wall=wall,
+            placements=[Placement(photo=Photo(height=100, width=100), x=50, y=50)],
+            obstacles=[],
+            d=0,
+            eye_level=100,
+        )
+
+        assert quadrant_imbalance(layout) == 0.0
+
+    def test_no_placements(self):
+        # All quadrants have 0 area → imbalance = 0
+        wall = Wall(height=400, width=400)
+        layout = Layout(
+            wall=wall,
+            placements=[],
+            obstacles=[],
+            d=0,
+            eye_level=200,
+        )
+
+        assert quadrant_imbalance(layout) == 0.0
+
+
+class TestQuadrantImbalancePositive:
+    def test_all_area_in_one_quadrant(self):
+        # 50x50 photo entirely in TL → areas=(2500,0,0,0)
+        # imbalance = 2500 - 0 = 2500
+        wall = Wall(height=400, width=400)
+        layout = Layout(
+            wall=wall,
+            placements=[Placement(photo=Photo(height=50, width=50), x=10, y=10)],
+            obstacles=[],
+            d=0,
+            eye_level=200,
+        )
+
+        assert quadrant_imbalance(layout) == 2500.0
+
+    def test_area_in_two_quadrants(self):
+        # Photo spanning TL and TR equally: areas=(2500,2500,0,0)
+        # imbalance = 2500 - 0 = 2500
+        wall = Wall(height=400, width=400)
+        layout = Layout(
+            wall=wall,
+            placements=[Placement(photo=Photo(height=50, width=100), x=150, y=10)],
+            obstacles=[],
+            d=0,
+            eye_level=200,
+        )
+
+        assert quadrant_imbalance(layout) == 2500.0
+
+    def test_unequal_photos_in_different_quadrants(self):
+        # TL=2500 (50x50), BR=4800 (80x60) → max=4800, min=0 → imbalance=4800
+        wall = Wall(height=400, width=400)
+        layout = Layout(
+            wall=wall,
+            placements=[
+                Placement(photo=Photo(height=50, width=50), x=10, y=10),
+                Placement(photo=Photo(height=80, width=60), x=300, y=300),
+            ],
+            obstacles=[],
+            d=0,
+            eye_level=200,
+        )
+
+        assert quadrant_imbalance(layout) == 4800.0
+
+    def test_returns_float(self):
+        wall = Wall(height=400, width=400)
+        layout = Layout(
+            wall=wall,
+            placements=[Placement(photo=Photo(height=50, width=50), x=10, y=10)],
+            obstacles=[],
+            d=0,
+            eye_level=200,
+        )
+
+        assert isinstance(quadrant_imbalance(layout), float)
 
