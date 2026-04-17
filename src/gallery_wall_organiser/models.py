@@ -62,3 +62,20 @@ class Placement:
     @property
     def bottom(self) -> float:
         return self.y + self.photo.height
+
+
+@dataclass
+class Layout:
+    wall: Wall
+    placements: list[Placement]
+    obstacles: list[Obstacle]
+    d: float
+    eye_level: float
+
+    @property
+    def horizontal_center(self) -> float:
+        return self.wall.width / 2
+
+    @property
+    def vertical_split(self) -> float:
+        return self.eye_level
