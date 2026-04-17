@@ -1,3 +1,6 @@
+import math
+import random
+
 import pytest
 
 from gallery_wall_organiser.geometry import (
@@ -8,6 +11,7 @@ from gallery_wall_organiser.geometry import (
 )
 from gallery_wall_organiser.models import Layout, Obstacle, Photo, Placement, Wall
 from gallery_wall_organiser.solver import (
+    accept,
     initialize_grid,
     perturb_position,
     swap_placements,
@@ -433,3 +437,119 @@ class TestSwapPlacementsDoesNotMutate:
         for k in range(len(layout.placements)):
             assert layout.placements[k].photo is orig_photos[k]
             assert (layout.placements[k].x, layout.placements[k].y) == orig_positions[k]
+
+
+class TestAcceptImprovement:
+    def test_negative_delta_cost_always_true(self):
+        """Improvement (negative delta_cost) should always be accepted."""
+        for delta in [-1.0, -10.0, -100.0]:
+            for temp in [1.0, 10.0, 100.0, 1000.0]:
+                result = accept(delta, temp)
+                assert result is True, f"delta_cost={delta}, temperature={temp}"
+
+
+class TestAcceptNoChange:
+    def test_zero_delta_cost_always_true(self):
+        """Zero cost delta (no improvement, no worse) should always be accepted."""
+        for temp in [0.0, 1.0, 10.0, 100.0]:
+            result = accept(0.0, temp)
+            assert result is True
+
+
+class TestAcceptZeroTemperature:
+    def test_worse_cost_zero_temp_false(self):
+        """With zero temperature, worse cost should always be rejected."""
+        for delta in [0.1, 1.0, 10.0, 100.0]:
+            result = accept(delta, 0.0)
+            assert result is False, f"delta_cost={delta}, temperature=0.0"
+
+    def test_zero_delta_zero_temp_true(self):
+        """Zero cost delta with zero temperature should be accepted."""
+        result = accept(0.0, 0.0)
+        assert result is True
+
+    def test_improvement_zero_temp_true(self):
+        """Improvement with zero temperature should be accepted."""
+        result = accept(-5.0, 0.0)
+        assert result is True
+
+
+class TestAcceptHighTemperature:
+    def test_high_temp_high_probability_worse(self):
+        """High temperature should lead to high acceptance probability for worse cost."""
+        random.seed(42)
+        accepts = sum(accept(50.0, 1000.0) for _ in range(100))
+        # With very high temp, should accept almost always (prob ≈ exp(-50/1000) ≈ 0.95)
+        assert accepts >= 90, f"Expected high acceptance rate, got {accepts}/100"
+
+    def test_very_high_temp_worse_acceptance(self):
+        """Very high temperature should approach random walk (almost always accept)."""
+        random.seed(123)
+        accepts = sum(accept(100.0, 10000.0) for _ in range(100))
+        # exp(-100/10000) ≈ 0.99, so almost always accept
+        assert accepts >= 95
+
+    def test_moderate_temp_some_rejection(self):
+        """Moderate temperature with large penalty should have some rejection."""
+        random.seed(99)
+        accepts = sum(accept(100.0, 10.0) for _ in range(100))
+        # exp(-100/10) ≈ 3.7e-5, should reject almost always
+        assert accepts <= 5, f"Expected few accepts, got {accepts}/100"
+
+
+class TestAcceptProbabilistic:
+    def test_metropolis_criterion_accepts_with_expected_probability(self):
+        """Verify acceptance follows exp(-delta_cost / temperature) approximately."""
+        random.seed(12345)
+        delta_cost = 20.0
+        temperature = 10.0
+        expected_prob = math.exp(-delta_cost / temperature)
+        # Run 1000 trials
+        accepts = sum(accept(delta_cost, temperature) for _ in range(1000))
+        observed_prob = accepts / 1000.0
+        # Check observed is within reasonable range of expected (±5% tolerance)
+        assert abs(observed_prob - expected_prob) < 0.05, (
+            f"Expected ~{expected_prob:.3f}, got {observed_prob:.3f}"
+        )
+
+    def test_small_delta_small_temp_high_prob(self):
+        """Small delta with small temperature should have moderate acceptance."""
+        random.seed(456)
+        # exp(-5/5) = exp(-1) ≈ 0.368
+        accepts = sum(accept(5.0, 5.0) for _ in range(1000))
+        prob = accepts / 1000.0
+        assert 0.3 < prob < 0.45
+
+    def test_large_delta_small_temp_low_prob(self):
+        """Large delta with small temperature should have low acceptance."""
+        random.seed(789)
+        # exp(-50/1) = exp(-50) ≈ 1.9e-22
+        accepts = sum(accept(50.0, 1.0) for _ in range(1000))
+        prob = accepts / 1000.0
+        assert prob < 0.01
+
+    def test_small_delta_large_temp_high_prob(self):
+        """Small delta with large temperature should have high acceptance."""
+        random.seed(321)
+        # exp(-5/100) ≈ 0.951
+        accepts = sum(accept(5.0, 100.0) for _ in range(1000))
+        prob = accepts / 1000.0
+        assert prob > 0.90
+
+
+class TestAcceptEdgeCases:
+    def test_very_small_positive_delta(self):
+        """Very small positive delta should have high acceptance at high temp."""
+        random.seed(111)
+        # exp(-0.01/100) ≈ 0.9999
+        accepts = sum(accept(0.01, 100.0) for _ in range(100))
+        assert accepts >= 99
+
+    def test_deterministic_sequence_with_seed(self):
+        """Fixed seed should produce deterministic results."""
+        results1 = [accept(10.0, 5.0) for _ in range(10)]
+        random.seed(555)
+        results2 = [accept(10.0, 5.0) for _ in range(10)]
+        random.seed(555)
+        results3 = [accept(10.0, 5.0) for _ in range(10)]
+        assert results2 == results3

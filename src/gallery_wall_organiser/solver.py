@@ -85,3 +85,18 @@ def swap_placements(layout: Layout, i: int, j: int) -> Layout:
     new_placements = list(layout.placements)
     new_placements[i], new_placements[j] = new_placements[j], new_placements[i]
     return _with_placements(layout, new_placements)
+
+
+def accept(delta_cost: float, temperature: float) -> bool:
+    """Metropolis acceptance criterion for simulated annealing.
+    
+    Returns True if the move should be accepted, False otherwise.
+    - Improvement (delta_cost <= 0) is always accepted.
+    - At zero temperature, only improvement or no-change is accepted.
+    - Otherwise, accept with probability exp(-delta_cost / temperature).
+    """
+    if delta_cost <= 0:
+        return True
+    if temperature == 0:
+        return False
+    return random.random() < math.exp(-delta_cost / temperature)
