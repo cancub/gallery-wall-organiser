@@ -67,7 +67,12 @@ def run(argv: Sequence[str] | None = None) -> Figure:
 
 
 def main() -> None:
-    run()
+    import tempfile, os
+    fig = run()
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+        path = f.name
+    fig.savefig(path, dpi=150)
+    os.startfile(path) if os.name == "nt" else os.system(f"xdg-open {path}")
 
 
 if __name__ == "__main__":
