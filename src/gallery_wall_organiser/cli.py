@@ -15,10 +15,22 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="gallery-wall-organiser",
         description="Automatically arrange photos on a gallery wall for visual balance.",
     )
-    parser.add_argument("--wall", nargs=2, type=float, metavar=("H", "W"), required=True)
-    parser.add_argument("--photos", nargs="+", type=float, metavar="DIM", required=True)
-    parser.add_argument("--obstacles", nargs="+", type=float, metavar="DIM", default=[])
-    parser.add_argument("--eye-level", type=float, default=1450.0)
+    parser.add_argument(
+        "--wall", nargs=2, type=float, metavar=("H", "W"), required=True,
+        help="Wall dimensions in mm: height then width.",
+    )
+    parser.add_argument(
+        "--photos", nargs="+", type=float, metavar="DIM", required=True,
+        help="Photo dimensions in mm as H W pairs: e.g. 300 400 250 350.",
+    )
+    parser.add_argument(
+        "--obstacles", nargs="+", type=float, metavar="DIM", default=[],
+        help="Fixed obstacles in mm as X Y H W groups, where X and Y are the bottom-left corner of the obstacle: e.g. 100 200 150 250.",
+    )
+    parser.add_argument(
+        "--eye-level", type=float, default=1450.0,
+        help="Eye-level height in mm used as the vertical split for quadrant balance (default: 1450).",
+    )
     return parser
 
 
